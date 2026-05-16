@@ -12,7 +12,7 @@ A [xbar](https://github.com/matryer/xbar) plugin that displays daily token usage
 - Current model name from settings
 - Auto-refresh every minute
 - Color-coded output for easy reading
-- **Built-in auto-update** - Check and install updates from menu
+- **Built-in auto-update** - Background update checks with one-click install from the menu
 
 ## Prerequisites
 
@@ -48,23 +48,19 @@ open -a xbar
 
 ### For Agents
 
-Use this if Codex, Claude Code, OpenCode, or another coding agent is installing from a local checkout.
-
-```bash
-git clone https://github.com/foxleoly/xbar-ai-usage.git
-cd xbar-ai-usage
-python3 .codex/skills/xbar-ai-usage-installer/scripts/install_xbar_plugin.py --dry-run
-python3 .codex/skills/xbar-ai-usage-installer/scripts/install_xbar_plugin.py
-open -a xbar
-```
-
-The repository includes a Codex skill at:
+Use the bundled skill instead of hand-copying commands:
 
 ```text
-.codex/skills/xbar-ai-usage-installer/SKILL.md
+Use the xbar-ai-usage-installer skill from this repository to install or update the xbar AI usage widget.
 ```
 
-Agents should run the dry-run first, verify the target path, then install. The installer backs up an existing plugin as `opencode-usage.1m.py.bak.off` and copies the current repository script into the xbar plugin directory.
+Skill entrypoint:
+
+```text
+skills/xbar-ai-usage-installer/SKILL.md
+```
+
+The skill handles the dry-run, install, backup, verification, and xbar refresh flow.
 
 ## Requirements
 
@@ -162,6 +158,7 @@ Updated: 20:06:28
 
 The plugin includes a built-in auto-update feature:
 
+- The plugin checks for new versions in the background and caches the result
 - When a new version is available, an update notification appears in the menu
 - Click "🔄 Update to vX.X.X" to install the latest version automatically
 - The plugin will refresh after updating

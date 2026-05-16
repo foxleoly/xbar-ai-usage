@@ -20,6 +20,8 @@ REPO = "foxleoly/xbar-ai-usage"
 PLUGIN_PATH = os.path.abspath(__file__)
 CACHE_TTL_SECONDS = int(os.environ.get("XBAR_AI_USAGE_CACHE_TTL", "300"))
 CACHE_PATH = Path.home() / ".cache/xbar-ai-usage/output.txt"
+UPDATE_CACHE_PATH = Path.home() / ".cache/xbar-ai-usage/latest_version.txt"
+UPDATE_CHECK_TTL_SECONDS = int(os.environ.get("XBAR_AI_USAGE_UPDATE_TTL", "21600"))
 
 EMPTY_STATS = {
     'today': {'t':0,'i':0,'o':0,'c':0,'r':0},
@@ -44,13 +46,22 @@ def add_usage(bucket, total=0, input_tokens=0, output_tokens=0, cache_tokens=0, 
     bucket['r'] += int(reasoning_tokens or 0)
 
 def get_latest_version():
-    """Get latest version from GitHub"""
-    if os.environ.get("XBAR_AI_USAGE_CHECK_UPDATE") != "1":
-        return None
+    """Read the cached latest version without blocking xbar rendering."""
+    try:
+        if UPDATE_CACHE_PATH.exists():
+            latest = UPDATE_CACHE_PATH.read_text().strip()
+            if latest:
+                return latest
+    except:
+        pass
+    return None
+
+def fetch_latest_version():
+    """Fetch latest version from GitHub."""
     try:
         import urllib.request
         url = f"https://raw.githubusercontent.com/{REPO}/master/opencode-usage.1m.py"
-        with urllib.request.urlopen(url, timeout=5) as response:
+        with urllib.request.urlopen(url, timeout=3) as response:
             content = response.read().decode('utf-8')
             for line in content.split('\n'):
                 if line.startswith('# <xbar.version>'):
@@ -58,6 +69,35 @@ def get_latest_version():
     except:
         pass
     return None
+
+def refresh_latest_version_cache():
+    latest = fetch_latest_version()
+    try:
+        UPDATE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        UPDATE_CACHE_PATH.write_text(latest or "")
+    except:
+        pass
+    return latest
+
+def maybe_spawn_update_check():
+    if os.environ.get("XBAR_AI_USAGE_UPDATE_CHECK") == "1":
+        return
+    try:
+        if UPDATE_CACHE_PATH.exists():
+            age = time.time() - UPDATE_CACHE_PATH.stat().st_mtime
+            if UPDATE_CHECK_TTL_SECONDS > 0 and age < UPDATE_CHECK_TTL_SECONDS:
+                return
+        env = os.environ.copy()
+        env["XBAR_AI_USAGE_UPDATE_CHECK"] = "1"
+        subprocess.Popen(
+            [sys.executable, PLUGIN_PATH],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
+            close_fds=True,
+        )
+    except:
+        pass
 
 def update_plugin():
     """Download and install latest version"""
@@ -69,6 +109,11 @@ def update_plugin():
         with open(PLUGIN_PATH, 'w') as f:
             f.write(content)
         os.chmod(PLUGIN_PATH, 0o755)
+        try:
+            CACHE_PATH.unlink(missing_ok=True)
+            UPDATE_CACHE_PATH.unlink(missing_ok=True)
+        except:
+            pass
         return True
     except Exception as e:
         return False
@@ -335,7 +380,8 @@ def main():
 
     # Update menu item
     if has_update:
-        print(f"🔄 Update to v{latest_version} | href=https://github.com/{REPO}")
+        print(f"🔄 Update to v{latest_version} | bash='{PLUGIN_PATH}' param1=update terminal=false refresh=true")
+        print(f"--Release page | href=https://github.com/{REPO}")
         print("---")
 
     # Qwen Code section (first)
@@ -399,6 +445,10 @@ def main():
     print(f"Updated: {datetime.now().strftime('%H:%M:%S')} | color=#78909c size=10")
 
 if __name__ == "__main__":
+    if os.environ.get("XBAR_AI_USAGE_UPDATE_CHECK") == "1":
+        refresh_latest_version_cache()
+        sys.exit(0)
+
     if len(sys.argv) > 1 and sys.argv[1] == "update":
         if update_plugin():
             print("✅ Update successful!")
@@ -407,6 +457,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     refresh_cache = os.environ.get("XBAR_AI_USAGE_REFRESH_CACHE") == "1"
+    maybe_spawn_update_check()
     if CACHE_PATH.exists() and not refresh_cache:
         age = time.time() - CACHE_PATH.stat().st_mtime
         print(CACHE_PATH.read_text(), end="")
