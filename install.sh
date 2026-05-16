@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install script for xbar OpenCode & Qwen Code Token Usage plugin
+# Install script for xbar AI Token Usage plugin
 
 set -e
 
@@ -9,9 +9,9 @@ REPO_URL="https://raw.githubusercontent.com"
 
 # Detect GitHub username (can be overridden)
 USERNAME="${GITHUB_USER:-foxleoly}"
-REPO_NAME="xbar-qwencode-usage"
+REPO_NAME="xbar-ai-usage"
 
-echo "Installing xbar-qwencode-usage plugin..."
+echo "Installing xbar-ai-usage plugin..."
 echo ""
 
 # Check if xbar is installed
