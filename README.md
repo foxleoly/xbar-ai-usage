@@ -48,19 +48,9 @@ open -a xbar
 
 ### For Agents
 
-Use the bundled skill instead of hand-copying commands:
-
 ```text
-Use the xbar-ai-usage-installer skill from this repository to install or update the xbar AI usage widget.
+Install the xbar AI usage widget: curl -sSL https://raw.githubusercontent.com/foxleoly/xbar-ai-usage/master/install.sh | bash
 ```
-
-Skill entrypoint:
-
-```text
-skills/xbar-ai-usage-installer/SKILL.md
-```
-
-The skill handles the dry-run, install, backup, verification, and xbar refresh flow.
 
 ## Requirements
 
