@@ -1,0 +1,10 @@
+mac-daemon/.build/
+iphone-app/.build/
+iphone-app/.xcode-derived/
+iphone-app/.xcode-derived-*/
+iphone-app/.xcode-device-derived/
+iphone-app/.swiftpm/
+watch-app/.xcode-derived/
+.superpowers/
+**/xcuserdata/
+*.xcuserstate

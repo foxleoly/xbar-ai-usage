@@ -4,6 +4,41 @@ A [xbar](https://github.com/matryer/xbar) plugin that displays daily token usage
 
 ![xbar AI usage menu](assets/screenshot.png)
 
+## TokenDock Companion
+
+TokenDock is an experimental iPhone and Apple Watch companion for the same agent usage data. It keeps the local-first model: a small macOS daemon reads local Codex usage data, advertises usage snapshots over Bluetooth LE, the iPhone app receives and caches them, and the Watch app shows compact usage screens.
+
+![TokenDock iPhone companion](assets/tokendock-iphone.png)
+
+![TokenDock Apple Watch app](assets/tokendock-watch.png)
+
+### TokenDock Features
+
+- Mac daemon broadcasts usage snapshots over Bluetooth LE, without WebSockets.
+- iPhone app shows Mac connection state, Watch sync state, per-agent totals, usage remaining, cached data, and a JSONL event log.
+- Apple Watch app shows four swipeable screens: rolling 5 hours, today, 7 days, and 30 days.
+- Snapshot payloads include agent identity, so Codex, Claude Code, OpenCode, and future agents can be separated.
+- Watch deployment target is watchOS 8.0 for broad compatibility.
+
+### TokenDock Project Layout
+
+```text
+mac-daemon/   macOS BLE peripheral and Codex usage collector
+iphone-app/   iPhone app, embedded Watch app, shared models, tests
+watch-app/    standalone Watch simulator project used for UI iteration
+```
+
+### TokenDock Validation
+
+The current branch has been validated with:
+
+```bash
+cd iphone-app && swift run agent-usage-bridge-tests
+cd mac-daemon && swift run agent-usage-tests
+```
+
+It has also been installed and launched on a physical iPhone and Apple Watch Series 9. For physical Watch installs, Xcode must be able to read the Watch OS version and show the watch as an eligible destination; if it only shows `watchOS ()`, put the Mac, iPhone, and Watch on the same Wi-Fi and let Xcode finish preparing the watch developer services.
+
 ## Features
 
 - Display token usage for Qwen Code, Codex, OpenCode, and Claude Code
