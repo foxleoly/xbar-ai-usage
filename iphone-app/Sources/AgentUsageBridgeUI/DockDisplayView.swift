@@ -188,7 +188,7 @@ public struct DockDisplayView: View {
     }
 
     private var totalUsage: TokenUsage {
-        state.agents
+        dockAgents
             .map { selectedWindow.usage(from: $0.windows) }
             .reduce(.zero) { partial, usage in
                 TokenUsage(
@@ -202,7 +202,7 @@ public struct DockDisplayView: View {
     }
 
     private var agentDisplays: [AgentDockDisplay] {
-        state.agents.enumerated().map { index, agent in
+        dockAgents.enumerated().map { index, agent in
             let usage = selectedWindow.usage(from: agent.windows)
             let brand = AgentBrand(agentID: agent.id, fallbackIndex: index)
             return AgentDockDisplay(
@@ -214,6 +214,25 @@ public struct DockDisplayView: View {
                 progress: brand.progress
             )
         }
+    }
+
+    private var dockAgents: [AgentSummary] {
+        var agents = state.agents
+        let existingIDs = Set(agents.map(\.id))
+        let supplementalAgents = MockData.codexSnapshot.agents
+            .filter { ["claude_code", "opencode"].contains($0.id) }
+            .filter { !existingIDs.contains($0.id) }
+            .map {
+                AgentSummary(
+                    id: $0.id,
+                    name: $0.name,
+                    status: $0.status,
+                    windows: $0.windows,
+                    rateLimits: $0.rateLimits
+                )
+            }
+        agents.append(contentsOf: supplementalAgents)
+        return agents
     }
 }
 
