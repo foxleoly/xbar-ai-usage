@@ -167,8 +167,7 @@ public struct DockDisplayView: View {
                 .lineLimit(2)
                 .minimumScaleFactor(0.82)
 
-            DockProgressBar(progress: primary.progress, color: primary.color)
-                .frame(height: 7)
+            DockProgressBar(progress: primary.progress, color: primary.color, height: 7)
         }
         .padding(14)
         .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -283,8 +282,7 @@ private struct AgentDockCard: View {
                 .foregroundStyle(.white.opacity(0.58))
                 .lineLimit(1)
 
-            DockProgressBar(progress: agent.progress, color: agent.color, subdued: compact)
-                .frame(height: compact ? 4 : 6)
+            DockProgressBar(progress: agent.progress, color: agent.color, height: compact ? 6 : 7)
 
             HStack {
                 Text("Progress")
@@ -308,7 +306,7 @@ private struct AgentDockCard: View {
 private struct DockProgressBar: View {
     let progress: Double
     let color: Color
-    var subdued = false
+    var height: CGFloat = 6
 
     private var clampedProgress: Double {
         min(max(progress, 0), 1)
@@ -318,13 +316,13 @@ private struct DockProgressBar: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(subdued ? DockPalette.progressTrack : .white.opacity(0.18))
+                    .fill(.white.opacity(0.18))
                 Capsule()
                     .fill(
                         LinearGradient(
                             colors: [
-                                subdued ? DockPalette.progressFillStart : color,
-                                subdued ? DockPalette.progressFillEnd : color.opacity(0.86)
+                                color,
+                                color.opacity(0.86)
                             ],
                             startPoint: .leading,
                             endPoint: .trailing
@@ -333,6 +331,7 @@ private struct DockProgressBar: View {
                     .frame(width: geometry.size.width * clampedProgress)
             }
         }
+        .frame(height: height)
         .accessibilityLabel("Progress")
         .accessibilityValue("\(Int((clampedProgress * 100).rounded())) percent")
     }
@@ -428,8 +427,5 @@ private enum DockPalette {
     static let codex = Color(red: 0.00, green: 0.78, blue: 0.58)
     static let claude = Color(red: 0.85, green: 0.42, blue: 0.18)
     static let opencode = Color(red: 0.13, green: 0.77, blue: 0.37)
-    static let progressTrack = Color(red: 0.10, green: 0.12, blue: 0.15)
-    static let progressFillStart = Color(red: 0.22, green: 0.30, blue: 0.38)
-    static let progressFillEnd = Color(red: 0.15, green: 0.21, blue: 0.28)
     static let fallbacks: [Color] = [.cyan, .purple, .yellow]
 }
