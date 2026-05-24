@@ -6,7 +6,7 @@ A [xbar](https://github.com/matryer/xbar) plugin that displays daily token usage
 
 ## TokenDock Companion
 
-TokenDock is an experimental iPhone and Apple Watch companion for the same agent usage data. It keeps the local-first model: a small macOS daemon reads local Codex usage data, advertises usage snapshots over Bluetooth LE, the iPhone app receives and caches them, and the Watch app shows compact usage screens.
+TokenDock is an experimental iPhone and Apple Watch companion for the same agent usage data. It keeps the local-first model: a small macOS daemon reads local Codex, Claude Code, and OpenCode usage data, advertises usage snapshots over Bluetooth LE, the iPhone app receives and caches them, and the Watch app shows compact usage screens.
 
 ![TokenDock iPhone companion](assets/tokendock-iphone.png)
 
@@ -23,7 +23,7 @@ TokenDock is an experimental iPhone and Apple Watch companion for the same agent
 ### TokenDock Project Layout
 
 ```text
-mac-daemon/   macOS BLE peripheral and Codex usage collector
+mac-daemon/   macOS BLE peripheral and local agent usage collectors
 iphone-app/   iPhone app, embedded Watch app, shared models, tests
 watch-app/    standalone Watch simulator project used for UI iteration
 ```

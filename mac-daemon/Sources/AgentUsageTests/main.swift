@@ -35,6 +35,13 @@ func makeTempRollout(_ lines: [String]) throws -> URL {
     return file
 }
 
+func makeTempDirectory() throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("agent-usage-tests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory
+}
+
 func tokenCountLine(
     timestamp: String,
     total: Int,
@@ -177,6 +184,116 @@ func testAggregatesCodexRolloutsIntoFourWindows() throws {
     expect(agent.windows.today.reasoning == 3, "today reasoning")
 }
 
+func testClaudeCodeCollectorAggregatesAssistantUsage() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+    let now = require(calendar.date(from: DateComponents(
+        timeZone: TimeZone(secondsFromGMT: 0),
+        year: 2026,
+        month: 5,
+        day: 19,
+        hour: 17,
+        minute: 30
+    )), "test date should be constructible")
+
+    let projectsURL = try makeTempDirectory()
+    let projectURL = projectsURL.appendingPathComponent("project", isDirectory: true)
+    try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+    let sessionURL = projectURL.appendingPathComponent("session.jsonl")
+    let lines = [
+        #"{"type":"assistant","timestamp":"2026-05-19T14:00:00.000Z","message":{"usage":{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":30,"cache_creation_input_tokens":5}}}"#,
+        #"{"type":"assistant","timestamp":"2026-05-19T10:00:00.000Z","message":{"usage":{"input_tokens":50,"output_tokens":10,"cache_read_input_tokens":5,"cache_creation_input_tokens":0}}}"#,
+        #"{"type":"user","timestamp":"2026-05-19T15:00:00.000Z","message":{"usage":{"input_tokens":999,"output_tokens":999}}}"#,
+        #"{"type":"assistant","timestamp":"2026-05-16T12:00:00.000Z","message":{"usage":{"input_tokens":7,"output_tokens":3,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}"#
+    ]
+    try lines.joined(separator: "\n").write(to: sessionURL, atomically: true, encoding: .utf8)
+
+    let agent = try ClaudeCodeUsageCollector(projectsURL: projectsURL).agent(now: now, calendar: calendar)
+
+    expect(agent.id == "claude_code", "Claude Code agent id")
+    expect(agent.status == "active", "Claude Code status")
+    expect(agent.windows.h5.total == 155, "Claude 5-hour total")
+    expect(agent.windows.h5.input == 100, "Claude 5-hour input")
+    expect(agent.windows.h5.output == 20, "Claude 5-hour output")
+    expect(agent.windows.h5.cache == 35, "Claude 5-hour cache")
+    expect(agent.windows.today.total == 220, "Claude today total")
+    expect(agent.windows.d7.total == 230, "Claude 7-day total")
+    expect(agent.windows.d30.total == 230, "Claude 30-day total")
+}
+
+func testOpenCodeCollectorAggregatesAssistantUsage() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+    let now = require(calendar.date(from: DateComponents(
+        timeZone: TimeZone(secondsFromGMT: 0),
+        year: 2026,
+        month: 5,
+        day: 19,
+        hour: 17,
+        minute: 30
+    )), "test date should be constructible")
+
+    let directory = try makeTempDirectory()
+    let databaseURL = directory.appendingPathComponent("opencode.db")
+    let query = """
+    CREATE TABLE message (data TEXT NOT NULL, time_created INTEGER NOT NULL);
+    INSERT INTO message VALUES ('{"role":"assistant","tokens":{"total":140,"input":100,"output":20,"cache":{"read":15,"write":5},"reasoning":2}}', 1779202800000);
+    INSERT INTO message VALUES ('{"role":"assistant","tokens":{"total":60,"input":40,"output":10,"cache":{"read":10,"write":0},"reasoning":1}}', 1779184800000);
+    INSERT INTO message VALUES ('{"role":"user","tokens":{"total":999,"input":999,"output":999}}', 1779206400000);
+    """
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+    process.arguments = [databaseURL.path, query]
+    try process.run()
+    process.waitUntilExit()
+    expect(process.terminationStatus == 0, "sqlite fixture should be created")
+
+    let agent = try OpenCodeUsageCollector(databaseURLs: [databaseURL]).agent(now: now, calendar: calendar)
+
+    expect(agent.id == "opencode", "OpenCode agent id")
+    expect(agent.status == "active", "OpenCode status")
+    expect(agent.windows.h5.total == 140, "OpenCode 5-hour total")
+    expect(agent.windows.h5.input == 100, "OpenCode 5-hour input")
+    expect(agent.windows.h5.output == 20, "OpenCode 5-hour output")
+    expect(agent.windows.h5.cache == 20, "OpenCode 5-hour cache")
+    expect(agent.windows.h5.reasoning == 2, "OpenCode 5-hour reasoning")
+    expect(agent.windows.today.total == 200, "OpenCode today total")
+}
+
+func testAgentUsageCollectorReturnsAllKnownAgents() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+    let now = require(calendar.date(from: DateComponents(
+        timeZone: TimeZone(secondsFromGMT: 0),
+        year: 2026,
+        month: 5,
+        day: 19,
+        hour: 17,
+        minute: 30
+    )), "test date should be constructible")
+
+    let codexRollout = try makeTempRollout([
+        tokenCountLine(timestamp: "2026-05-19T16:00:00.000Z", total: 100, input: 70, output: 20, cache: 8, reasoning: 2)
+    ])
+    let codexCollector = CodexUsageCollector(threadIndex: StubThreadIndex(rows: [
+        ThreadRecord(rolloutPath: codexRollout, updatedAt: now.addingTimeInterval(-60))
+    ]))
+    let claudeProjectsURL = try makeTempDirectory()
+    let collector = AgentUsageCollector(
+        codexCollector: codexCollector,
+        claudeCollector: ClaudeCodeUsageCollector(projectsURL: claudeProjectsURL),
+        openCodeCollector: OpenCodeUsageCollector(databaseURLs: [])
+    )
+
+    let snapshot = try collector.snapshot(now: now, calendar: calendar)
+    let ids = snapshot.agents.map(\.id)
+
+    expect(ids == ["codex", "claude_code", "opencode"], "snapshot should include Codex, Claude Code, and OpenCode")
+    expect(snapshot.agents[0].status == "active", "Codex should be active")
+    expect(snapshot.agents[1].status == "unavailable", "Claude Code should be unavailable without local logs")
+    expect(snapshot.agents[2].status == "unavailable", "OpenCode should be unavailable without local databases")
+}
+
 func testEncodesStableMultiAgentPayloadShape() throws {
     let updatedAt = Date(timeIntervalSince1970: 1_779_190_200)
     let snapshot = AgentUsageSnapshot(
@@ -258,6 +375,9 @@ do {
     try testCodexSnapshotUsesTokenCountDeltasInsideWindows()
     try testCodexSnapshotIncludesLatestRateLimits()
     try testAggregatesCodexRolloutsIntoFourWindows()
+    try testClaudeCodeCollectorAggregatesAssistantUsage()
+    try testOpenCodeCollectorAggregatesAssistantUsage()
+    try testAgentUsageCollectorReturnsAllKnownAgents()
     try testEncodesStableMultiAgentPayloadShape()
     try testSplitsPayloadIntoReassemblableChunks()
     try testRejectsChunkSizeTooSmallForHeader()

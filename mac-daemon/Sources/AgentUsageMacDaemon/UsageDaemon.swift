@@ -1,14 +1,14 @@
 import Foundation
 
 public final class UsageDaemon: @unchecked Sendable {
-    private let collector: CodexUsageCollector
+    private let collector: AgentUsageCollector
     private let encoder: SnapshotEncoder
     private let peripheral: BLEUsagePeripheral
     private let refreshInterval: TimeInterval
     private var timer: Timer?
 
     public init(
-        collector: CodexUsageCollector,
+        collector: AgentUsageCollector,
         encoder: SnapshotEncoder = SnapshotEncoder(),
         peripheral: BLEUsagePeripheral = BLEUsagePeripheral(),
         refreshInterval: TimeInterval = 60
