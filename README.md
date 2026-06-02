@@ -43,7 +43,7 @@ It has also been installed and launched on a physical iPhone and Apple Watch Ser
 
 - Display token usage for Qwen Code, Codex, OpenCode, and Claude Code
 - Real-time statistics: Total, Input, Output, Cache, Thoughts/Reasoning
-- 7-day, 30-day and current-month totals
+- 7-day, 30-day, current-month, and previous-month totals
 - Current model name from settings
 - Auto-refresh every minute
 - Color-coded output for easy reading
@@ -152,7 +152,8 @@ Codex
 --Reasoning: 2.8K
 --7-Day: 83.7M
 --30-Day: 412.9M
---Month: 412.9M
+--This Month: 412.9M
+--Last Month: 380.4M
 ---
 Claude Code
 --Total: 1.3M
@@ -162,7 +163,8 @@ Claude Code
 --Reasoning: 0
 --7-Day: 1.3M
 --30-Day: 1.3M
---Month: 1.3M
+--This Month: 1.3M
+--Last Month: 932.8K
 ---
 OpenCode
 --Total: 1.2M
