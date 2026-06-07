@@ -2,7 +2,8 @@ import AgentUsageMacDaemon
 import Foundation
 
 let threadIndex = SQLiteThreadIndex()
-let collector = CodexUsageCollector(threadIndex: threadIndex)
+let codexCollector = CodexUsageCollector(threadIndex: threadIndex)
+let collector = AgentUsageCollector(codexCollector: codexCollector)
 
 if CommandLine.arguments.contains("--print-once") {
     do {

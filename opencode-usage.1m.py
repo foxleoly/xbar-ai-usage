@@ -1,6 +1,6 @@
 #!/opt/homebrew/bin/python3
 # <xbar.title>AI Token Usage</xbar.title>
-# <xbar.version>2.12.0</xbar.version>
+# <xbar.version>2.13.0</xbar.version>
 # <xbar.desc>Shows daily token usage from Qwen Code, Codex, OpenCode, and Claude Code</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>
 
@@ -15,7 +15,7 @@ from contextlib import redirect_stdout
 from datetime import datetime, timedelta
 from pathlib import Path
 
-VERSION = "2.12.0"
+VERSION = "2.13.0"
 REPO = "foxleoly/xbar-ai-usage"
 PLUGIN_PATH = os.path.abspath(__file__)
 CACHE_TTL_SECONDS = int(os.environ.get("XBAR_AI_USAGE_CACHE_TTL", "300"))
@@ -28,6 +28,7 @@ EMPTY_STATS = {
     'd7': {'t':0,'i':0,'o':0,'c':0,'r':0},
     'd30': {'t':0,'i':0,'o':0,'c':0,'r':0},
     'month': {'t':0,'i':0,'o':0,'c':0,'r':0},
+    'previous_month': {'t':0,'i':0,'o':0,'c':0,'r':0},
 }
 
 def format_count(n):
@@ -44,6 +45,19 @@ def add_usage(bucket, total=0, input_tokens=0, output_tokens=0, cache_tokens=0, 
     bucket['o'] += int(output_tokens or 0)
     bucket['c'] += int(cache_tokens or 0)
     bucket['r'] += int(reasoning_tokens or 0)
+
+def is_month_offset(day, now, offset):
+    month_index = now.year * 12 + now.month - 1 + offset
+    return day.year == month_index // 12 and day.month == month_index % 12 + 1
+
+def is_newer_version(candidate, current):
+    try:
+        return tuple(map(int, candidate.split('.'))) > tuple(map(int, current.split('.')))
+    except:
+        return False
+
+def has_usage(stats):
+    return any(bucket.get('t', 0) > 0 for bucket in stats.values() if isinstance(bucket, dict))
 
 def get_latest_version():
     """Read the cached latest version without blocking xbar rendering."""
@@ -156,6 +170,7 @@ def get_oc_stats():
                 ('d7', "date(time_created/1000,'unixepoch','localtime')>=date('now','localtime','-6 days')"),
                 ('d30', "date(time_created/1000,'unixepoch','localtime')>=date('now','localtime','-29 days')"),
                 ('month', "strftime('%Y-%m',time_created/1000,'unixepoch','localtime')=strftime('%Y-%m','now','localtime')"),
+                ('previous_month', "strftime('%Y-%m',time_created/1000,'unixepoch','localtime')=strftime('%Y-%m','now','localtime','start of month','-1 month')"),
             ]:
                 c.execute(f"""SELECT 
                     SUM(json_extract(data,'$.tokens.total')),
@@ -183,6 +198,7 @@ def get_qwen_stats():
         'd7': {'t':0,'i':0,'o':0,'c':0,'th':0},
         'd30': {'t':0,'i':0,'o':0,'c':0,'th':0},
         'month': {'t':0,'i':0,'o':0,'c':0,'th':0},
+        'previous_month': {'t':0,'i':0,'o':0,'c':0,'th':0},
     }
     now = datetime.now().date()
     cutoff7 = now - timedelta(days=6)
@@ -228,12 +244,18 @@ def get_qwen_stats():
                     stats['d30']['o'] += o
                     stats['d30']['c'] += c
                     stats['d30']['th'] += th
-                if rd.year == now.year and rd.month == now.month:
+                if is_month_offset(rd, now, 0):
                     stats['month']['t'] += t
                     stats['month']['i'] += i
                     stats['month']['o'] += o
                     stats['month']['c'] += c
                     stats['month']['th'] += th
+                if is_month_offset(rd, now, -1):
+                    stats['previous_month']['t'] += t
+                    stats['previous_month']['i'] += i
+                    stats['previous_month']['o'] += o
+                    stats['previous_month']['c'] += c
+                    stats['previous_month']['th'] += th
         except: pass
     stats['model'] = latest_model
     return stats
@@ -266,8 +288,10 @@ def get_claude_stats():
                         add_usage(stats['d7'], t, i, o, c, 0)
                     if rd >= cutoff30:
                         add_usage(stats['d30'], t, i, o, c, 0)
-                    if rd.year == now.year and rd.month == now.month:
+                    if is_month_offset(rd, now, 0):
                         add_usage(stats['month'], t, i, o, c, 0)
+                    if is_month_offset(rd, now, -1):
+                        add_usage(stats['previous_month'], t, i, o, c, 0)
                 except: pass
         except: pass
     return stats
@@ -284,7 +308,8 @@ def get_codex_stats():
         c.execute("""SELECT rollout_path, updated_at
             FROM threads
             WHERE date(updated_at,'unixepoch','localtime') >= date('now','localtime','-29 days')
-               OR strftime('%Y-%m',updated_at,'unixepoch','localtime')=strftime('%Y-%m','now','localtime')""")
+               OR strftime('%Y-%m',updated_at,'unixepoch','localtime')=strftime('%Y-%m','now','localtime')
+               OR strftime('%Y-%m',updated_at,'unixepoch','localtime')=strftime('%Y-%m','now','localtime','start of month','-1 month')""")
         rollout_rows = [(Path(row[0]), datetime.fromtimestamp(row[1]).date()) for row in c.fetchall() if row and row[0]]
         conn.close()
     except:
@@ -331,8 +356,10 @@ def get_codex_stats():
             add_usage(stats['d7'], total, i, o, c, r)
         if updated_date >= cutoff30:
             add_usage(stats['d30'], total, i, o, c, r)
-        if updated_date.year == now.year and updated_date.month == now.month:
+        if is_month_offset(updated_date, now, 0):
             add_usage(stats['month'], total, i, o, c, r)
+        if is_month_offset(updated_date, now, -1):
+            add_usage(stats['previous_month'], total, i, o, c, r)
     return stats
 
 def main():
@@ -348,12 +375,16 @@ def main():
     cx_m = cx.get('month',{}).get('t',0)
     cc_m = cc.get('month',{}).get('t',0)
     oc_m = oc.get('month',{}).get('t',0)
+    show_qw = has_usage(qw)
+    show_cx = has_usage(cx)
+    show_cc = has_usage(cc)
+    show_oc = has_usage(oc)
     # Get model from chat logs first, fallback to settings.json
     qw_model = qw.get('model') or get_model_info()
 
     # Check for updates
     latest_version = get_latest_version()
-    has_update = latest_version and latest_version != VERSION
+    has_update = latest_version and is_newer_version(latest_version, VERSION)
 
     # Title - show all tools with data
     title_parts = []
@@ -385,7 +416,7 @@ def main():
         print("---")
 
     # Qwen Code section (first)
-    if qw_t > 0 or qw_m > 0:
+    if show_qw:
         print("Qwen Code | color=#7986cb font=Menlo size=13")
         print(f"--Total: {format_count(qw['today']['t'])} | color=#00bcd4")
         print(f"--Input: {format_count(qw['today']['i'])} | color=#81d4fa")
@@ -394,12 +425,13 @@ def main():
         print(f"--Thoughts: {format_count(qw['today']['th'])} | color=#f48fb1")
         print(f"--7-Day: {format_count(qw['d7']['t'])} | color=#ce93d8")
         print(f"--30-Day: {format_count(qw['d30']['t'])} | color=#90a4ae")
-        print(f"--Month: {format_count(qw['month']['t'])} | color=#90a4ae")
+        print(f"--This Month: {format_count(qw['month']['t'])} | color=#90a4ae")
+        print(f"--Last Month: {format_count(qw['previous_month']['t'])} | color=#90a4ae")
         print(f"--Model: {qw_model or 'N/A'} | color=#b0bec5 size=11")
 
     # Codex section (second)
-    if cx_t > 0 or cx_m > 0:
-        if qw_t > 0 or qw_m > 0:
+    if show_cx:
+        if show_qw:
             print("---")
         print("Codex | color=#4fc3f7 font=Menlo size=13")
         print(f"--Total: {format_count(cx['today']['t'])} | color=#00bcd4")
@@ -409,11 +441,12 @@ def main():
         print(f"--Reasoning: {format_count(cx['today']['r'])} | color=#f48fb1")
         print(f"--7-Day: {format_count(cx['d7']['t'])} | color=#ce93d8")
         print(f"--30-Day: {format_count(cx['d30']['t'])} | color=#90a4ae")
-        print(f"--Month: {format_count(cx['month']['t'])} | color=#90a4ae")
+        print(f"--This Month: {format_count(cx['month']['t'])} | color=#90a4ae")
+        print(f"--Last Month: {format_count(cx['previous_month']['t'])} | color=#90a4ae")
 
     # Claude Code section (second)
-    if cc_t > 0 or cc_m > 0:
-        if qw_t > 0 or qw_m > 0 or cx_t > 0 or cx_m > 0:
+    if show_cc:
+        if show_qw or show_cx:
             print("---")
         print("Claude Code | color=#d4a574 font=Menlo size=13")
         print(f"--Total: {format_count(cc['today']['t'])} | color=#00bcd4")
@@ -423,11 +456,12 @@ def main():
         print(f"--Reasoning: {format_count(cc['today']['r'])} | color=#f48fb1")
         print(f"--7-Day: {format_count(cc['d7']['t'])} | color=#ce93d8")
         print(f"--30-Day: {format_count(cc['d30']['t'])} | color=#90a4ae")
-        print(f"--Month: {format_count(cc['month']['t'])} | color=#90a4ae")
+        print(f"--This Month: {format_count(cc['month']['t'])} | color=#90a4ae")
+        print(f"--Last Month: {format_count(cc['previous_month']['t'])} | color=#90a4ae")
 
     # OpenCode section
-    if oc_t > 0 or oc_m > 0:
-        if qw_t > 0 or qw_m > 0 or cx_t > 0 or cx_m > 0 or cc_t > 0 or cc_m > 0:
+    if show_oc:
+        if show_qw or show_cx or show_cc:
             print("---")
         print("OpenCode | color=#66bb6a font=Menlo size=13")
         print(f"--Total: {format_count(oc_t)} | color=#00bcd4")
@@ -437,7 +471,8 @@ def main():
         print(f"--Reasoning: {format_count(oc['today']['r'])} | color=#f48fb1")
         print(f"--7-Day: {format_count(oc['d7']['t'])} | color=#ce93d8")
         print(f"--30-Day: {format_count(oc['d30']['t'])} | color=#90a4ae")
-        print(f"--Month: {format_count(oc['month']['t'])} | color=#90a4ae")
+        print(f"--This Month: {format_count(oc['month']['t'])} | color=#90a4ae")
+        print(f"--Last Month: {format_count(oc['previous_month']['t'])} | color=#90a4ae")
         print(f"--Model: {qw_model or 'N/A'} | color=#b0bec5 size=11")
 
     print("---")

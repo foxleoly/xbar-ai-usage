@@ -6,7 +6,7 @@ A [xbar](https://github.com/matryer/xbar) plugin that displays daily token usage
 
 ## TokenDock Companion
 
-TokenDock is an experimental iPhone and Apple Watch companion for the same agent usage data. It keeps the local-first model: a small macOS daemon reads local Codex usage data, advertises usage snapshots over Bluetooth LE, the iPhone app receives and caches them, and the Watch app shows compact usage screens.
+TokenDock is an experimental iPhone and Apple Watch companion for the same agent usage data. It keeps the local-first model: a small macOS daemon reads local Codex, Claude Code, and OpenCode usage data, advertises usage snapshots over Bluetooth LE, the iPhone app receives and caches them, and the Watch app shows compact usage screens.
 
 ![TokenDock iPhone companion](assets/tokendock-iphone.png)
 
@@ -23,7 +23,7 @@ TokenDock is an experimental iPhone and Apple Watch companion for the same agent
 ### TokenDock Project Layout
 
 ```text
-mac-daemon/   macOS BLE peripheral and Codex usage collector
+mac-daemon/   macOS BLE peripheral and local agent usage collectors
 iphone-app/   iPhone app, embedded Watch app, shared models, tests
 watch-app/    standalone Watch simulator project used for UI iteration
 ```
@@ -43,7 +43,7 @@ It has also been installed and launched on a physical iPhone and Apple Watch Ser
 
 - Display token usage for Qwen Code, Codex, OpenCode, and Claude Code
 - Real-time statistics: Total, Input, Output, Cache, Thoughts/Reasoning
-- 7-day, 30-day and current-month totals
+- 7-day, 30-day, current-month, and previous-month totals
 - Current model name from settings
 - Auto-refresh every minute
 - Color-coded output for easy reading
@@ -152,7 +152,8 @@ Codex
 --Reasoning: 2.8K
 --7-Day: 83.7M
 --30-Day: 412.9M
---Month: 412.9M
+--This Month: 412.9M
+--Last Month: 380.4M
 ---
 Claude Code
 --Total: 1.3M
@@ -162,7 +163,8 @@ Claude Code
 --Reasoning: 0
 --7-Day: 1.3M
 --30-Day: 1.3M
---Month: 1.3M
+--This Month: 1.3M
+--Last Month: 932.8K
 ---
 OpenCode
 --Total: 1.2M

@@ -2,11 +2,13 @@
 
 Mac-side daemon for the Agent Usage Watch Bridge.
 
-The daemon reads local Codex token usage, builds a multi-agent usage snapshot, and advertises the snapshot over Bluetooth LE. The first implementation only enables the Codex adapter, but the payload is shaped for multiple agents.
+The daemon reads local Codex, Claude Code, and OpenCode token usage, builds a multi-agent usage snapshot, and advertises the snapshot over Bluetooth LE.
 
 ## Scope
 
 - Reads Codex usage from `~/.codex/state_5.sqlite` and rollout JSONL files.
+- Reads Claude Code usage from `~/.claude/projects/**/*.jsonl`.
+- Reads OpenCode usage from `~/.local/share/opencode/opencode.db` and `~/.local/share/opencode-alt/opencode/opencode.db`.
 - Produces four windows: rolling 5 hours, today, last 7 days, and last 30 days.
 - Encodes a stable `agent_usage_snapshot` JSON payload.
 - Exposes a Core Bluetooth peripheral with a custom GATT service.
@@ -85,8 +87,31 @@ The iPhone receiver should group chunks by `message id`, order them by `chunk in
         "d7": { "total": 1, "input": 1, "output": 0, "cache": 0, "reasoning": 0 },
         "d30": { "total": 1, "input": 1, "output": 0, "cache": 0, "reasoning": 0 }
       }
+    },
+    {
+      "id": "claude_code",
+      "name": "Claude Code",
+      "source": "claude_code",
+      "status": "active",
+      "windows": {
+        "h5": { "total": 2, "input": 1, "output": 1, "cache": 0, "reasoning": 0 },
+        "today": { "total": 2, "input": 1, "output": 1, "cache": 0, "reasoning": 0 },
+        "d7": { "total": 2, "input": 1, "output": 1, "cache": 0, "reasoning": 0 },
+        "d30": { "total": 2, "input": 1, "output": 1, "cache": 0, "reasoning": 0 }
+      }
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "source": "opencode",
+      "status": "active",
+      "windows": {
+        "h5": { "total": 3, "input": 2, "output": 1, "cache": 0, "reasoning": 0 },
+        "today": { "total": 3, "input": 2, "output": 1, "cache": 0, "reasoning": 0 },
+        "d7": { "total": 3, "input": 2, "output": 1, "cache": 0, "reasoning": 0 },
+        "d30": { "total": 3, "input": 2, "output": 1, "cache": 0, "reasoning": 0 }
+      }
     }
   ]
 }
 ```
-
