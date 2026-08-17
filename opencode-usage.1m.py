@@ -1,7 +1,7 @@
 #!/opt/homebrew/bin/python3
 # <xbar.title>AI Token Usage</xbar.title>
-# <xbar.version>2.13.0</xbar.version>
-# <xbar.desc>Shows daily token usage from Qwen Code, Codex, OpenCode, and Claude Code</xbar.desc>
+# <xbar.version>2.14.0</xbar.version>
+# <xbar.desc>Shows daily token usage from Qwen Code, Codex, Pi, OpenCode, and Claude Code</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>
 
 import json
@@ -15,7 +15,7 @@ from contextlib import redirect_stdout
 from datetime import datetime, timedelta
 from pathlib import Path
 
-VERSION = "2.13.0"
+VERSION = "2.14.0"
 REPO = "foxleoly/xbar-ai-usage"
 PLUGIN_PATH = os.path.abspath(__file__)
 CACHE_TTL_SECONDS = int(os.environ.get("XBAR_AI_USAGE_CACHE_TTL", "300"))
@@ -362,21 +362,122 @@ def get_codex_stats():
             add_usage(stats['previous_month'], total, i, o, c, r)
     return stats
 
+def get_pi_stats(session_path=None, now=None):
+    """Get Pi usage from persisted session JSONL entries."""
+    if session_path is None:
+        session_path = os.environ.get(
+            "PI_CODING_AGENT_SESSION_DIR",
+            str(Path.home() / ".pi" / "agent" / "sessions"),
+        )
+    session_path = Path(session_path).expanduser()
+    if not session_path.exists():
+        return {}
+
+    stats = new_stats()
+    now = now or datetime.now()
+    today = now.date() if isinstance(now, datetime) else now
+    cutoff7 = today - timedelta(days=6)
+    cutoff30 = today - timedelta(days=29)
+    seen_entries = set()
+    latest_model = None
+    latest_model_timestamp = None
+
+    for session_file in session_path.rglob("*.jsonl"):
+        try:
+            lines = open(session_file, errors="replace")
+        except:
+            continue
+        try:
+            for line in lines:
+                try:
+                    entry = json.loads(line)
+                except:
+                    continue
+
+                usage = None
+                event_timestamp = entry.get("timestamp")
+                if entry.get("type") == "message":
+                    message = entry.get("message", {})
+                    role = message.get("role")
+                    if role == "assistant":
+                        usage = message.get("usage")
+                        model = message.get("responseModel") or message.get("model")
+                        model_timestamp = entry.get("timestamp") or ""
+                        if model and (latest_model_timestamp is None or model_timestamp > latest_model_timestamp):
+                            latest_model = model
+                            latest_model_timestamp = model_timestamp
+                    elif role == "toolResult":
+                        usage = message.get("usage")
+                    event_timestamp = message.get("timestamp") or event_timestamp
+                elif entry.get("type") in ("compaction", "branch_summary"):
+                    usage = entry.get("usage")
+
+                if not isinstance(usage, dict):
+                    continue
+
+                entry_id = entry.get("id")
+                if entry_id:
+                    entry_identity = (entry_id, entry.get("timestamp"), entry.get("type"))
+                    if entry_identity in seen_entries:
+                        continue
+                    seen_entries.add(entry_identity)
+
+                try:
+                    if isinstance(event_timestamp, (int, float)):
+                        event_date = datetime.fromtimestamp(event_timestamp / 1000).date()
+                    else:
+                        parsed_timestamp = datetime.fromisoformat(str(event_timestamp).replace("Z", "+00:00"))
+                        event_date = parsed_timestamp.astimezone().date() if parsed_timestamp.tzinfo else parsed_timestamp.date()
+                except:
+                    continue
+
+                try:
+                    i = int(usage.get("input", 0) or 0)
+                    o = int(usage.get("output", 0) or 0)
+                    cache_read = int(usage.get("cacheRead", 0) or 0)
+                    cache_write = int(usage.get("cacheWrite", 0) or 0)
+                    c = cache_read + cache_write
+                    r = int(usage.get("reasoning", 0) or 0)
+                    total_value = usage.get("totalTokens")
+                    total = int(total_value) if total_value is not None else i + o + c
+                except:
+                    continue
+
+                if event_date == today:
+                    add_usage(stats['today'], total, i, o, c, r)
+                if event_date >= cutoff7:
+                    add_usage(stats['d7'], total, i, o, c, r)
+                if event_date >= cutoff30:
+                    add_usage(stats['d30'], total, i, o, c, r)
+                if is_month_offset(event_date, today, 0):
+                    add_usage(stats['month'], total, i, o, c, r)
+                if is_month_offset(event_date, today, -1):
+                    add_usage(stats['previous_month'], total, i, o, c, r)
+        finally:
+            lines.close()
+
+    stats['model'] = latest_model
+    return stats
+
 def main():
     oc = get_oc_stats()
     qw = get_qwen_stats()
     cx = get_codex_stats()
+    pi = get_pi_stats()
     cc = get_claude_stats()
     qw_t = qw.get('today',{}).get('t',0)
     cx_t = cx.get('today',{}).get('t',0)
+    pi_t = pi.get('today',{}).get('t',0)
     cc_t = cc.get('today',{}).get('t',0)
     oc_t = oc.get('today',{}).get('t',0)
     qw_m = qw.get('month',{}).get('t',0)
     cx_m = cx.get('month',{}).get('t',0)
+    pi_m = pi.get('month',{}).get('t',0)
     cc_m = cc.get('month',{}).get('t',0)
     oc_m = oc.get('month',{}).get('t',0)
     show_qw = has_usage(qw)
     show_cx = has_usage(cx)
+    show_pi = has_usage(pi)
     show_cc = has_usage(cc)
     show_oc = has_usage(oc)
     # Get model from chat logs first, fallback to settings.json
@@ -388,13 +489,15 @@ def main():
 
     # Title - show all tools with data
     title_parts = []
-    month_total = qw_m + cx_m + cc_m + oc_m
+    month_total = qw_m + cx_m + pi_m + cc_m + oc_m
     if month_total > 0:
         title_parts.append(f"AI Mo {format_count(month_total)}")
     elif qw_t > 0:
         title_parts.append(f"QC {format_count(qw_t)}")
     if month_total == 0 and cx_t > 0:
         title_parts.append(f"Codex {format_count(cx_t)}")
+    if month_total == 0 and pi_t > 0:
+        title_parts.append(f"Pi {format_count(pi_t)}")
     if month_total == 0 and cc_t > 0:
         title_parts.append(f"CC {format_count(cc_t)}")
     if month_total == 0 and oc_t > 0:
@@ -444,9 +547,25 @@ def main():
         print(f"--This Month: {format_count(cx['month']['t'])} | color=#90a4ae")
         print(f"--Last Month: {format_count(cx['previous_month']['t'])} | color=#90a4ae")
 
-    # Claude Code section (second)
-    if show_cc:
+    # Pi section
+    if show_pi:
         if show_qw or show_cx:
+            print("---")
+        print("Pi | color=#ab47bc font=Menlo size=13")
+        print(f"--Total: {format_count(pi['today']['t'])} | color=#00bcd4")
+        print(f"--Input: {format_count(pi['today']['i'])} | color=#81d4fa")
+        print(f"--Output: {format_count(pi['today']['o'])} | color=#a5d6a7")
+        print(f"--Cache: {format_count(pi['today']['c'])} | color=#ffcc80")
+        print(f"--Reasoning: {format_count(pi['today']['r'])} | color=#f48fb1")
+        print(f"--7-Day: {format_count(pi['d7']['t'])} | color=#ce93d8")
+        print(f"--30-Day: {format_count(pi['d30']['t'])} | color=#90a4ae")
+        print(f"--This Month: {format_count(pi['month']['t'])} | color=#90a4ae")
+        print(f"--Last Month: {format_count(pi['previous_month']['t'])} | color=#90a4ae")
+        print(f"--Model: {pi.get('model') or 'N/A'} | color=#b0bec5 size=11")
+
+    # Claude Code section
+    if show_cc:
+        if show_qw or show_cx or show_pi:
             print("---")
         print("Claude Code | color=#d4a574 font=Menlo size=13")
         print(f"--Total: {format_count(cc['today']['t'])} | color=#00bcd4")
@@ -461,7 +580,7 @@ def main():
 
     # OpenCode section
     if show_oc:
-        if show_qw or show_cx or show_cc:
+        if show_qw or show_cx or show_pi or show_cc:
             print("---")
         print("OpenCode | color=#66bb6a font=Menlo size=13")
         print(f"--Total: {format_count(oc_t)} | color=#00bcd4")

@@ -1,6 +1,6 @@
 # xbar AI Token Usage
 
-A [xbar](https://github.com/matryer/xbar) plugin that displays daily token usage statistics for [Qwen Code](https://github.com/QwenLM/qwen-code), Codex, [OpenCode](https://github.com/opencode-ai/opencode) and [Claude Code](https://claude.ai/code) in your macOS menu bar.
+A [xbar](https://github.com/matryer/xbar) plugin that displays daily token usage statistics for [Qwen Code](https://github.com/QwenLM/qwen-code), Codex, [Pi](https://github.com/earendil-works/pi), [OpenCode](https://github.com/opencode-ai/opencode), and [Claude Code](https://claude.ai/code) in your macOS menu bar.
 
 ![xbar AI usage menu](assets/screenshot.png)
 
@@ -41,7 +41,7 @@ It has also been installed and launched on a physical iPhone and Apple Watch Ser
 
 ## Features
 
-- Display token usage for Qwen Code, Codex, OpenCode, and Claude Code
+- Display token usage for Qwen Code, Codex, Pi, OpenCode, and Claude Code
 - Real-time statistics: Total, Input, Output, Cache, Thoughts/Reasoning
 - 7-day, 30-day, current-month, and previous-month totals
 - Current model name from settings
@@ -103,10 +103,13 @@ This plugin reads token usage data from the following locations:
 |------|-----------|-------------|
 | Qwen Code | `~/.qwen/projects/*/chats/*.jsonl` | JSONL log files |
 | Codex | `~/.codex/state_5.sqlite` and `~/.codex/sessions/**/*.jsonl` | SQLite thread index plus JSONL rollout token counters |
+| Pi | `~/.pi/agent/sessions/**/*.jsonl` | Session usage from assistant, tool, compaction, and branch-summary entries |
 | Claude Code | `~/.claude/projects/*/*.jsonl` | JSONL log files |
 | OpenCode | `~/.local/share/opencode/opencode.db`, `~/.local/share/opencode-alt/opencode/opencode.db` | SQLite database |
 
-> 📝 **Note**: Qwen Code, Codex, Claude Code, and OpenCode are NOT required dependencies. The plugin will simply show "No data" or hide the section if the corresponding data source doesn't exist.
+> 📝 **Note**: Qwen Code, Codex, Pi, Claude Code, and OpenCode are NOT required dependencies. The plugin will simply show "No data" or hide the section if the corresponding data source doesn't exist.
+>
+> Pi session clones and forks can contain copied usage entries. The plugin deduplicates these entries by stable session entry identity. Set `PI_CODING_AGENT_SESSION_DIR` if Pi uses a custom session directory.
 
 ## Configuration
 
@@ -132,7 +135,7 @@ Example `settings.json`:
 ## Output Example
 
 ```
-QC 7.9M / Codex 6.2M / CC 1.3M / OC 1.2M
+AI Mo 28.4M
 ---
 Qwen Code
 --Total: 7.9M
@@ -154,6 +157,18 @@ Codex
 --30-Day: 412.9M
 --This Month: 412.9M
 --Last Month: 380.4M
+---
+Pi
+--Total: 900.0K
+--Input: 500.0K
+--Output: 100.0K
+--Cache: 300.0K
+--Reasoning: 20.0K
+--7-Day: 4.2M
+--30-Day: 12.7M
+--This Month: 8.1M
+--Last Month: 6.4M
+--Model: gpt-5.6-sol
 ---
 Claude Code
 --Total: 1.3M
