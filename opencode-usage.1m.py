@@ -1,6 +1,6 @@
 #!/opt/homebrew/bin/python3
 # <xbar.title>AI Token Usage</xbar.title>
-# <xbar.version>2.14.0</xbar.version>
+# <xbar.version>2.14.1</xbar.version>
 # <xbar.desc>Shows daily token usage from Qwen Code, Codex, Pi, OpenCode, and Claude Code</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>
 
@@ -15,7 +15,7 @@ from contextlib import redirect_stdout
 from datetime import datetime, timedelta
 from pathlib import Path
 
-VERSION = "2.14.0"
+VERSION = "2.14.1"
 REPO = "foxleoly/xbar-ai-usage"
 PLUGIN_PATH = os.path.abspath(__file__)
 CACHE_TTL_SECONDS = int(os.environ.get("XBAR_AI_USAGE_CACHE_TTL", "300"))
@@ -32,6 +32,7 @@ EMPTY_STATS = {
 }
 
 def format_count(n):
+    if n >= 1_000_000_000: return f"{n/1_000_000_000:.1f}B"
     if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
     if n >= 1_000: return f"{n/1_000:.1f}K"
     return str(n)

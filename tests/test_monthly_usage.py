@@ -34,6 +34,11 @@ class MonthlyUsageTests(unittest.TestCase):
         self.assertFalse(MODULE.is_newer_version("2.12.0", "2.13.0"))
         self.assertFalse(MODULE.is_newer_version("2.13.0", "2.13.0"))
 
+    def test_format_count_uses_billion_suffix(self):
+        self.assertEqual(MODULE.format_count(999_999_999), "1000.0M")
+        self.assertEqual(MODULE.format_count(1_000_000_000), "1.0B")
+        self.assertEqual(MODULE.format_count(69_253_000_000), "69.3B")
+
     def test_has_usage_includes_previous_month_only_stats(self):
         stats = MODULE.new_stats()
         stats["previous_month"]["t"] = 42
