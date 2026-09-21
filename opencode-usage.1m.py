@@ -407,8 +407,6 @@ def get_pi_stats(session_path=None, now=None):
                         if model and (latest_model_timestamp is None or model_timestamp > latest_model_timestamp):
                             latest_model = model
                             latest_model_timestamp = model_timestamp
-                    elif role == "toolResult":
-                        usage = message.get("usage")
                     event_timestamp = message.get("timestamp") or event_timestamp
                 elif entry.get("type") in ("compaction", "branch_summary"):
                     usage = entry.get("usage")
@@ -439,8 +437,8 @@ def get_pi_stats(session_path=None, now=None):
                     cache_write = int(usage.get("cacheWrite", 0) or 0)
                     c = cache_read + cache_write
                     r = int(usage.get("reasoning", 0) or 0)
-                    total_value = usage.get("totalTokens")
-                    total = int(total_value) if total_value is not None else i + o + c
+                    # Unified: real total consumption (Pi's totalTokens omits cacheWrite + reasoning).
+                    total = i + o + c + r
                 except:
                     continue
 
