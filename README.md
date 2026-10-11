@@ -1,12 +1,12 @@
 # xbar AI Token Usage
 
-A [xbar](https://github.com/matryer/xbar) plugin that displays daily token usage statistics for [Qwen Code](https://github.com/QwenLM/qwen-code), Codex, [Pi](https://github.com/earendil-works/pi), [OpenCode](https://github.com/opencode-ai/opencode), and [Claude Code](https://claude.ai/code) in your macOS menu bar.
+A [xbar](https://github.com/matryer/xbar) plugin that displays daily token usage statistics for [Qwen Code](https://github.com/QwenLM/qwen-code), Codex, [Pi](https://github.com/earendil-works/pi), omp, [OpenCode](https://github.com/opencode-ai/opencode), and [Claude Code](https://claude.ai/code) in your macOS menu bar.
 
 ![xbar AI usage menu](assets/screenshot.png)
 
 ## Features
 
-- Display token usage for Qwen Code, Codex, Pi, OpenCode, and Claude Code
+- Display token usage for Qwen Code, Codex, Pi, omp, OpenCode, and Claude Code
 - Real-time statistics: Total, Input, Output, Cache, Thoughts/Reasoning
 - 7-day, 30-day, current-month, and previous-month totals
 - Current model name from settings
@@ -68,13 +68,13 @@ This plugin reads token usage data from the following locations:
 |------|-----------|-------------|
 | Qwen Code | `~/.qwen/projects/*/chats/*.jsonl` | JSONL log files |
 | Codex | `~/.codex/state_5.sqlite` and `~/.codex/sessions/**/*.jsonl` | SQLite thread index plus JSONL rollout token counters |
-| Pi | `~/.pi/agent/sessions/**/*.jsonl` | Session usage from assistant, tool, compaction, and branch-summary entries |
+| Pi / omp | `~/.pi/agent/sessions/**/*.jsonl`, `~/.omp/agent/sessions/**/*.jsonl` | Session usage from assistant, tool, compaction, and branch-summary entries |
 | Claude Code | `~/.claude/projects/*/*.jsonl` | JSONL log files |
 | OpenCode | `~/.local/share/opencode/opencode.db`, `~/.local/share/opencode-alt/opencode/opencode.db` | SQLite database |
 
 > 📝 **Note**: Qwen Code, Codex, Pi, Claude Code, and OpenCode are NOT required dependencies. The plugin will simply show "No data" or hide the section if the corresponding data source doesn't exist.
 >
-> Pi session clones and forks can contain copied usage entries. The plugin deduplicates these entries by stable session entry identity. Set `PI_CODING_AGENT_SESSION_DIR` if Pi uses a custom session directory.
+> Pi session clones and forks can contain copied usage entries. The plugin deduplicates these entries by stable session entry identity. Set `PI_CODING_AGENT_SESSION_DIR` if Pi uses a custom session directory, or `OMP_CODING_AGENT_SESSION_DIR` for omp.
 
 ## Configuration
 
