@@ -363,17 +363,18 @@ def get_codex_stats():
             add_usage(stats['previous_month'], total, i, o, c, r)
     return stats
 
-def _read_pi_like_sessions(session_dir, now):
+def _read_pi_like_sessions(session_dir, now, seen_entries=None):
     """Read usage JSONL entries from a Pi-compatible session directory."""
     session_path = Path(str(session_dir)).expanduser()
     if not session_path.exists():
-        return None, {}
+        return None, None, None
 
     stats = new_stats()
     today = now.date() if isinstance(now, datetime) else now
     cutoff7 = today - timedelta(days=6)
     cutoff30 = today - timedelta(days=29)
-    seen_entries = set()
+    if seen_entries is None:
+        seen_entries = set()
     latest_model = None
     latest_model_timestamp = None
 
@@ -469,10 +470,11 @@ def get_pi_stats(session_path=None, now=None):
         ]
 
     merged = new_stats()
+    seen_entries = set()
     latest_model = None
     latest_model_timestamp = None
     for directory in directories:
-        stats, model, model_timestamp = _read_pi_like_sessions(directory, now)
+        stats, model, model_timestamp = _read_pi_like_sessions(directory, now, seen_entries)
         if stats is None:
             continue
         for bucket_name in ('today', 'd7', 'd30', 'month', 'previous_month'):

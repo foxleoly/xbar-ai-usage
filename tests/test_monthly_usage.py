@@ -186,7 +186,9 @@ class MonthlyUsageTests(unittest.TestCase):
             pi_dir.mkdir()
             omp_dir.mkdir()
             (pi_dir / "pi.jsonl").write_text(json.dumps(pi_entry))
-            (omp_dir / "omp.jsonl").write_text(json.dumps(omp_entry))
+            # omp holds its own entry plus a forked copy of pi's entry (same identity).
+            forked_pi = dict(pi_entry)
+            (omp_dir / "omp.jsonl").write_text("\n".join([json.dumps(omp_entry), json.dumps(forked_pi)]))
 
             env = {
                 "PI_CODING_AGENT_SESSION_DIR": str(pi_dir),
@@ -195,7 +197,38 @@ class MonthlyUsageTests(unittest.TestCase):
             with mock.patch.dict(_os.environ, env):
                 stats = MODULE.get_pi_stats(now=now)
 
+        # The forked copy of pi-1 must be counted once, so today == pi-1 + omp-1 only.
         self.assertEqual(stats["today"], {"t": 132, "i": 110, "o": 22, "c": 0, "r": 0})
+        self.assertEqual(stats["model"], "agnes-flash")
+
+    def test_pi_stats_missing_dirs_dont_crash_or_double_count(self):
+        import os as _os
+
+        now = datetime(2026, 8, 17, 12, 0, 0)
+        omp_entry = {
+            "type": "message",
+            "id": "omp-1",
+            "timestamp": "2026-08-17T11:00:00Z",
+            "message": {
+                "role": "assistant",
+                "model": "agnes-flash",
+                "timestamp": int(now.timestamp() * 1000),
+                "usage": {"input": 10, "output": 2, "totalTokens": 12},
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            omp_dir = Path(temp_dir) / "omp"
+            omp_dir.mkdir()
+            (omp_dir / "omp.jsonl").write_text(json.dumps(omp_entry))
+
+            env = {
+                "PI_CODING_AGENT_SESSION_DIR": str(Path(temp_dir) / "missing-pi"),
+                "OMP_CODING_AGENT_SESSION_DIR": str(omp_dir),
+            }
+            with mock.patch.dict(_os.environ, env):
+                stats = MODULE.get_pi_stats(now=now)
+
+        self.assertEqual(stats["today"], {"t": 12, "i": 10, "o": 2, "c": 0, "r": 0})
         self.assertEqual(stats["model"], "agnes-flash")
 
 
