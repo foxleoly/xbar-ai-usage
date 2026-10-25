@@ -8,10 +8,11 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
-
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "opencode-usage.1m.py"
 SPEC = importlib.util.spec_from_file_location("xbar_ai_usage", SCRIPT_PATH)
+assert SPEC is not None
 MODULE = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
 
@@ -120,10 +121,12 @@ class MonthlyUsageTests(unittest.TestCase):
 
             stats = MODULE.get_pi_stats(temp_dir, now=now)
 
-        self.assertEqual(stats["today"], {"t": 155, "i": 100, "o": 20, "c": 35, "r": 7})
-        self.assertEqual(stats["d7"]["t"], 170)
-        self.assertEqual(stats["d30"]["t"], 186)
-        self.assertEqual(stats["month"]["t"], 176)
+        # toolResult messages are not counted (only assistant / compaction / branch_summary),
+        # so the 7-day window equals today's assistant entry; reasoning is included in the total.
+        self.assertEqual(stats["today"], {"t": 162, "i": 100, "o": 20, "c": 35, "r": 7})
+        self.assertEqual(stats["d7"]["t"], 162)
+        self.assertEqual(stats["d30"]["t"], 178)
+        self.assertEqual(stats["month"]["t"], 168)
         self.assertEqual(stats["previous_month"]["t"], 10)
         self.assertEqual(stats["model"], "gpt-5.6-sol")
 
@@ -146,9 +149,87 @@ class MonthlyUsageTests(unittest.TestCase):
 
         menu = output.getvalue()
         self.assertTrue(menu.startswith("AI Mo 200\n"))
-        self.assertIn("Pi | color=#ab47bc", menu)
+        self.assertIn("Pi / omp | color=#ab47bc", menu)
         self.assertIn("--Total: 155", menu)
         self.assertIn("--Model: gpt-5.6-sol", menu)
+
+    def test_pi_stats_merges_pi_and_omp_session_dirs(self):
+        import os as _os
+
+        now = datetime(2026, 8, 17, 12, 0, 0)
+        pi_entry = {
+            "type": "message",
+            "id": "pi-1",
+            "timestamp": "2026-08-17T10:00:00Z",
+            "message": {
+                "role": "assistant",
+                "model": "gpt-5.6-sol",
+                "timestamp": int(now.timestamp() * 1000),
+                "usage": {"input": 100, "output": 20, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 120},
+            },
+        }
+        omp_entry = {
+            "type": "message",
+            "id": "omp-1",
+            "timestamp": "2026-08-17T11:00:00Z",
+            "message": {
+                "role": "assistant",
+                "model": "agnes-flash",
+                "timestamp": int(now.timestamp() * 1000),
+                "usage": {"input": 10, "output": 2, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 12},
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pi_dir = Path(temp_dir) / "pi"
+            omp_dir = Path(temp_dir) / "omp"
+            pi_dir.mkdir()
+            omp_dir.mkdir()
+            (pi_dir / "pi.jsonl").write_text(json.dumps(pi_entry))
+            # omp holds its own entry plus a forked copy of pi's entry (same identity).
+            forked_pi = dict(pi_entry)
+            (omp_dir / "omp.jsonl").write_text("\n".join([json.dumps(omp_entry), json.dumps(forked_pi)]))
+
+            env = {
+                "PI_CODING_AGENT_SESSION_DIR": str(pi_dir),
+                "OMP_CODING_AGENT_SESSION_DIR": str(omp_dir),
+            }
+            with mock.patch.dict(_os.environ, env):
+                stats = MODULE.get_pi_stats(now=now)
+
+        # The forked copy of pi-1 must be counted once, so today == pi-1 + omp-1 only.
+        self.assertEqual(stats["today"], {"t": 132, "i": 110, "o": 22, "c": 0, "r": 0})
+        self.assertEqual(stats["model"], "agnes-flash")
+
+    def test_pi_stats_missing_dirs_dont_crash_or_double_count(self):
+        import os as _os
+
+        now = datetime(2026, 8, 17, 12, 0, 0)
+        omp_entry = {
+            "type": "message",
+            "id": "omp-1",
+            "timestamp": "2026-08-17T11:00:00Z",
+            "message": {
+                "role": "assistant",
+                "model": "agnes-flash",
+                "timestamp": int(now.timestamp() * 1000),
+                "usage": {"input": 10, "output": 2, "totalTokens": 12},
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            omp_dir = Path(temp_dir) / "omp"
+            omp_dir.mkdir()
+            (omp_dir / "omp.jsonl").write_text(json.dumps(omp_entry))
+
+            env = {
+                "PI_CODING_AGENT_SESSION_DIR": str(Path(temp_dir) / "missing-pi"),
+                "OMP_CODING_AGENT_SESSION_DIR": str(omp_dir),
+            }
+            with mock.patch.dict(_os.environ, env):
+                stats = MODULE.get_pi_stats(now=now)
+
+        self.assertEqual(stats["today"], {"t": 12, "i": 10, "o": 2, "c": 0, "r": 0})
+        self.assertEqual(stats["model"], "agnes-flash")
 
 
 if __name__ == "__main__":

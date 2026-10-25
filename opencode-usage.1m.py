@@ -1,7 +1,7 @@
 #!/opt/homebrew/bin/python3
 # <xbar.title>AI Token Usage</xbar.title>
-# <xbar.version>2.14.1</xbar.version>
-# <xbar.desc>Shows daily token usage from Qwen Code, Codex, Pi, OpenCode, and Claude Code</xbar.desc>
+# <xbar.version>2.14.2</xbar.version>
+# <xbar.desc>Shows daily token usage from Qwen Code, Codex, Pi, omp, OpenCode, and Claude Code</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>
 
 import json
@@ -15,7 +15,7 @@ from contextlib import redirect_stdout
 from datetime import datetime, timedelta
 from pathlib import Path
 
-VERSION = "2.14.1"
+VERSION = "2.14.2"
 REPO = "foxleoly/xbar-ai-usage"
 PLUGIN_PATH = os.path.abspath(__file__)
 CACHE_TTL_SECONDS = int(os.environ.get("XBAR_AI_USAGE_CACHE_TTL", "300"))
@@ -363,23 +363,18 @@ def get_codex_stats():
             add_usage(stats['previous_month'], total, i, o, c, r)
     return stats
 
-def get_pi_stats(session_path=None, now=None):
-    """Get Pi usage from persisted session JSONL entries."""
-    if session_path is None:
-        session_path = os.environ.get(
-            "PI_CODING_AGENT_SESSION_DIR",
-            str(Path.home() / ".pi" / "agent" / "sessions"),
-        )
-    session_path = Path(session_path).expanduser()
+def _read_pi_like_sessions(session_dir, now, seen_entries=None):
+    """Read usage JSONL entries from a Pi-compatible session directory."""
+    session_path = Path(str(session_dir)).expanduser()
     if not session_path.exists():
-        return {}
+        return None, None, None
 
     stats = new_stats()
-    now = now or datetime.now()
     today = now.date() if isinstance(now, datetime) else now
     cutoff7 = today - timedelta(days=6)
     cutoff30 = today - timedelta(days=29)
-    seen_entries = set()
+    if seen_entries is None:
+        seen_entries = set()
     latest_model = None
     latest_model_timestamp = None
 
@@ -436,7 +431,7 @@ def get_pi_stats(session_path=None, now=None):
                     cache_read = int(usage.get("cacheRead", 0) or 0)
                     cache_write = int(usage.get("cacheWrite", 0) or 0)
                     c = cache_read + cache_write
-                    r = int(usage.get("reasoning", 0) or 0)
+                    r = int(usage.get("reasoning", 0) or usage.get("reasoningTokens", 0) or 0)
                     # Unified: real total consumption (Pi's totalTokens omits cacheWrite + reasoning).
                     total = i + o + c + r
                 except:
@@ -455,8 +450,43 @@ def get_pi_stats(session_path=None, now=None):
         finally:
             lines.close()
 
-    stats['model'] = latest_model
-    return stats
+    return stats, latest_model, latest_model_timestamp
+
+def get_pi_stats(session_path=None, now=None):
+    """Get Pi and omp usage from persisted session JSONL entries."""
+    now = now or datetime.now()
+    if session_path is not None:
+        directories = [session_path]
+    else:
+        directories = [
+            os.environ.get(
+                "PI_CODING_AGENT_SESSION_DIR",
+                str(Path.home() / ".pi" / "agent" / "sessions"),
+            ),
+            os.environ.get(
+                "OMP_CODING_AGENT_SESSION_DIR",
+                str(Path.home() / ".omp" / "agent" / "sessions"),
+            ),
+        ]
+
+    merged = new_stats()
+    seen_entries = set()
+    latest_model = None
+    latest_model_timestamp = None
+    for directory in directories:
+        stats, model, model_timestamp = _read_pi_like_sessions(directory, now, seen_entries)
+        if stats is None:
+            continue
+        for bucket_name in ('today', 'd7', 'd30', 'month', 'previous_month'):
+            b = stats.get(bucket_name) or {}
+            add_usage(merged[bucket_name], b.get('t', 0), b.get('i', 0), b.get('o', 0), b.get('c', 0), b.get('r', 0))
+        if model and (latest_model_timestamp is None or model_timestamp > latest_model_timestamp):
+            latest_model = model
+            latest_model_timestamp = model_timestamp
+
+    merged['model'] = latest_model
+    return merged
+
 
 def main():
     oc = get_oc_stats()
@@ -496,7 +526,7 @@ def main():
     if month_total == 0 and cx_t > 0:
         title_parts.append(f"Codex {format_count(cx_t)}")
     if month_total == 0 and pi_t > 0:
-        title_parts.append(f"Pi {format_count(pi_t)}")
+        title_parts.append(f"Pi/omp {format_count(pi_t)}")
     if month_total == 0 and cc_t > 0:
         title_parts.append(f"CC {format_count(cc_t)}")
     if month_total == 0 and oc_t > 0:
@@ -550,7 +580,7 @@ def main():
     if show_pi:
         if show_qw or show_cx:
             print("---")
-        print("Pi | color=#ab47bc font=Menlo size=13")
+        print("Pi / omp | color=#ab47bc font=Menlo size=13")
         print(f"--Total: {format_count(pi['today']['t'])} | color=#00bcd4")
         print(f"--Input: {format_count(pi['today']['i'])} | color=#81d4fa")
         print(f"--Output: {format_count(pi['today']['o'])} | color=#a5d6a7")
@@ -569,7 +599,6 @@ def main():
         print("Claude Code | color=#d4a574 font=Menlo size=13")
         print(f"--Total: {format_count(cc['today']['t'])} | color=#00bcd4")
         print(f"--Input: {format_count(cc['today']['i'])} | color=#81d4fa")
-        print(f"--Output: {format_count(cc['today']['o'])} | color=#a5d6a7")
         print(f"--Cache: {format_count(cc['today']['c'])} | color=#ffcc80")
         print(f"--Reasoning: {format_count(cc['today']['r'])} | color=#f48fb1")
         print(f"--7-Day: {format_count(cc['d7']['t'])} | color=#ce93d8")
