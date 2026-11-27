@@ -1,12 +1,12 @@
 # xbar AI Token Usage
 
-A [xbar](https://github.com/matryer/xbar) plugin that displays daily token usage statistics for [Qwen Code](https://github.com/QwenLM/qwen-code), Codex, [Pi](https://github.com/earendil-works/pi), omp, [OpenCode](https://github.com/opencode-ai/opencode), and [Claude Code](https://claude.ai/code) in your macOS menu bar.
+A [xbar](https://github.com/matryer/xbar) plugin that displays daily token usage statistics for [Qwen Code](https://github.com/QwenLM/qwen-code), Codex, [Pi](https://github.com/earendil-works/pi), omp, [OpenCode](https://github.com/opencode-ai/opencode), and [Claude Code](https://claude.ai/code), and Antigravity in your macOS menu bar.
 
 ![xbar AI usage menu](assets/screenshot.png)
 
 ## Features
 
-- Display token usage for Qwen Code, Codex, Pi, omp, OpenCode, and Claude Code
+- Display token usage for Qwen Code, Codex, Pi, omp, OpenCode, Claude Code, and Antigravity (Desktop/IDE + CLI)
 - Real-time statistics: Total, Input, Output, Cache, Thoughts/Reasoning
 - 7-day, 30-day, current-month, and previous-month totals
 - Current model name from settings
@@ -71,8 +71,11 @@ This plugin reads token usage data from the following locations:
 | Pi / omp | `~/.pi/agent/sessions/**/*.jsonl`, `~/.omp/agent/sessions/**/*.jsonl` | Session usage from assistant, tool, compaction, and branch-summary entries |
 | Claude Code | `~/.claude/projects/*/*.jsonl` | JSONL log files |
 | OpenCode | `~/.local/share/opencode/opencode.db`, `~/.local/share/opencode-alt/opencode/opencode.db` | SQLite database |
+| Antigravity | `~/.gemini/antigravity/brain/*/.system_generated/logs/transcript.jsonl`, `~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl` | Per-step LLM token counts (input, output, cache read) from conversation transcripts, including context checkpoints |
 
 > 📝 **Note**: Qwen Code, Codex, Pi, Claude Code, and OpenCode are NOT required dependencies. The plugin will simply show "No data" or hide the section if the corresponding data source doesn't exist.
+>
+> Antigravity usage is read from conversation transcripts of both the Desktop/IDE and the CLI. Total = input + output + cache read (output already includes thinking tokens). Set `ANTIGRAVITY_BRAIN_DIR` / `ANTIGRAVITY_CLI_BRAIN_DIR` if your data lives elsewhere. When the most recent Antigravity conversation used Plan/Execute mode, the menu shows separate `Plan Model` and `Execute Model` lines; otherwise it shows a single `Model` line.
 >
 > Pi session clones and forks can contain copied usage entries. The plugin deduplicates these entries by stable session entry identity. Set `PI_CODING_AGENT_SESSION_DIR` if Pi uses a custom session directory, or `OMP_CODING_AGENT_SESSION_DIR` for omp.
 
@@ -155,6 +158,17 @@ OpenCode
 --7-Day: 53.0M
 --30-Day: 53.0M
 --Model: [Bailian Coding Plan] glm-5
+---
+Antigravity
+--Total: 79.0M
+--Input: 3.5M
+--Output: 559.4K
+--Cache: 75.0M
+--7-Day: 114.7M
+--30-Day: 114.7M
+--This Month: 114.7M
+--Last Month: 0
+--Model: gemini-4-neon-high
 ---
 Updated: 20:06:28
 ```
