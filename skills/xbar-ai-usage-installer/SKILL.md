@@ -1,6 +1,6 @@
 ---
 name: xbar-ai-usage-installer
-description: Agent-facing installer for this repository's xbar AI token usage plugin. Use when the user asks an agent to install, update, repair, or verify the macOS menu bar widget for Qwen Code, Codex, Claude Code, and OpenCode usage.
+description: Agent-facing installer for this repository's xbar AI token usage plugin. Use when the user asks an agent to install, update, repair, or verify the macOS menu bar widget for Qwen Code, Codex, Claude Code, Pi, omp, OpenCode, and Antigravity usage.
 ---
 
 # xbar AI Usage Installer

@@ -1,7 +1,7 @@
 #!/opt/homebrew/bin/python3
 # <xbar.title>AI Token Usage</xbar.title>
-# <xbar.version>2.14.2</xbar.version>
-# <xbar.desc>Shows daily token usage from Qwen Code, Codex, Pi, omp, OpenCode, and Claude Code</xbar.desc>
+# <xbar.version>2.15.0</xbar.version>
+# <xbar.desc>Shows daily token usage from Qwen Code, Codex, Pi, omp, OpenCode, Claude Code, and Antigravity</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>
 
 import json
@@ -15,7 +15,7 @@ from contextlib import redirect_stdout
 from datetime import datetime, timedelta
 from pathlib import Path
 
-VERSION = "2.14.2"
+VERSION = "2.15.0"
 REPO = "foxleoly/xbar-ai-usage"
 PLUGIN_PATH = os.path.abspath(__file__)
 CACHE_TTL_SECONDS = int(os.environ.get("XBAR_AI_USAGE_CACHE_TTL", "300"))
@@ -487,6 +487,171 @@ def get_pi_stats(session_path=None, now=None):
     merged['model'] = latest_model
     return merged
 
+def _read_antigravity_brain_dir(brain_dir, now, seen_entries=None):
+    """Read LLM token usage from Antigravity conversation transcripts in a brain directory."""
+    brain_path = Path(str(brain_dir)).expanduser()
+    if not brain_path.exists():
+        return None, None
+
+    stats = new_stats()
+    today = now.date() if isinstance(now, datetime) else now
+    cutoff7 = today - timedelta(days=6)
+    cutoff30 = today - timedelta(days=29)
+    if seen_entries is None:
+        seen_entries = set()
+    latest_model_info = None
+
+    for transcript in brain_path.glob("*/.system_generated/logs/transcript.jsonl"):
+        conversation_id = transcript.parents[2].name
+        has_plan_execute = False
+        in_execute = False
+        conv_latest_ts = conv_latest_model = None
+        conv_plan_ts = conv_plan_model = None
+        conv_exec_ts = conv_exec_model = None
+        try:
+            lines = open(transcript, errors="replace")
+        except:
+            continue
+        try:
+            for line in lines:
+                if ('_tokens"' not in line
+                        and '"USER_INPUT"' not in line
+                        and 'Plan mode is off' not in line
+                        and '[plan review' not in line
+                        and 'exit_plan_mode' not in line
+                        and 'enter_plan_mode' not in line):
+                    continue
+                try:
+                    entry = json.loads(line)
+                except:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+
+                entry_type = entry.get("type")
+                if entry_type == "USER_INPUT":
+                    in_execute = False
+                    continue
+                if entry_type == "SYSTEM_MESSAGE":
+                    content = str(entry.get("content") or "")
+                    if "Plan mode is off" in content:
+                        has_plan_execute = True
+                        in_execute = True
+                    elif "[plan review" in content:
+                        has_plan_execute = True
+                        in_execute = False
+                    continue
+
+                created_at = entry.get("created_at")
+                if not created_at:
+                    continue
+                step_index = entry.get("step_index")
+                if step_index is not None:
+                    identity = (conversation_id, step_index, created_at, entry.get("type"))
+                    if identity in seen_entries:
+                        continue
+                    seen_entries.add(identity)
+
+                try:
+                    parsed = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+                    event_date = parsed.astimezone().date() if parsed.tzinfo else parsed.date()
+                except:
+                    continue
+
+                try:
+                    i = int(entry.get("input_tokens", 0) or 0)
+                    o = int(entry.get("output_tokens", 0) or 0)
+                    c = (int(entry.get("cache_read_tokens", 0) or 0)
+                         + int(entry.get("cache_creation_tokens", 0) or 0)
+                         + int(entry.get("cache_write_tokens", 0) or 0))
+                    r = int(entry.get("reasoning_tokens", 0) or entry.get("thinking_tokens", 0) or 0)
+                except:
+                    continue
+                # output_tokens already includes thinking tokens, so r is informational only.
+                total = i + o + c
+                if total <= 0:
+                    continue
+
+                model = entry.get("model")
+                if model:
+                    ts_str = str(created_at)
+                    if conv_latest_ts is None or ts_str > conv_latest_ts:
+                        conv_latest_ts, conv_latest_model = ts_str, model
+                    if in_execute:
+                        if conv_exec_ts is None or ts_str > conv_exec_ts:
+                            conv_exec_ts, conv_exec_model = ts_str, model
+                    else:
+                        if conv_plan_ts is None or ts_str > conv_plan_ts:
+                            conv_plan_ts, conv_plan_model = ts_str, model
+                tool_names = {c.get("name") for c in (entry.get("tool_calls") or []) if isinstance(c, dict)}
+                if "exit_plan_mode" in tool_names:
+                    has_plan_execute = True
+                    in_execute = True
+                elif "enter_plan_mode" in tool_names:
+                    has_plan_execute = True
+                    in_execute = False
+
+                if event_date == today:
+                    add_usage(stats['today'], total, i, o, c, r)
+                if event_date >= cutoff7:
+                    add_usage(stats['d7'], total, i, o, c, r)
+                if event_date >= cutoff30:
+                    add_usage(stats['d30'], total, i, o, c, r)
+                if is_month_offset(event_date, today, 0):
+                    add_usage(stats['month'], total, i, o, c, r)
+                if is_month_offset(event_date, today, -1):
+                    add_usage(stats['previous_month'], total, i, o, c, r)
+        finally:
+            lines.close()
+
+        if conv_latest_ts is not None and (latest_model_info is None or conv_latest_ts > latest_model_info["timestamp"]):
+            split = bool(has_plan_execute and conv_plan_model and conv_exec_model)
+            latest_model_info = {
+                "timestamp": conv_latest_ts,
+                "model": conv_latest_model,
+                "plan_model": conv_plan_model if split else None,
+                "execute_model": conv_exec_model if split else None,
+            }
+
+    return stats, latest_model_info
+
+def get_antigravity_stats(brain_dirs=None, now=None):
+    """Get Antigravity (Desktop/IDE and CLI) usage from conversation transcripts."""
+    now = now or datetime.now()
+    if brain_dirs is None:
+        directories = [
+            os.environ.get(
+                "ANTIGRAVITY_BRAIN_DIR",
+                str(Path.home() / ".gemini" / "antigravity" / "brain"),
+            ),
+            os.environ.get(
+                "ANTIGRAVITY_CLI_BRAIN_DIR",
+                str(Path.home() / ".gemini" / "antigravity-cli" / "brain"),
+            ),
+        ]
+    elif isinstance(brain_dirs, (str, os.PathLike)):
+        directories = [brain_dirs]
+    else:
+        directories = list(brain_dirs)
+
+    merged = new_stats()
+    seen_entries = set()
+    latest_model_info = None
+    for directory in directories:
+        stats, model_info = _read_antigravity_brain_dir(directory, now, seen_entries)
+        if stats is None:
+            continue
+        for bucket_name in ('today', 'd7', 'd30', 'month', 'previous_month'):
+            b = stats.get(bucket_name) or {}
+            add_usage(merged[bucket_name], b.get('t', 0), b.get('i', 0), b.get('o', 0), b.get('c', 0), b.get('r', 0))
+        if model_info and (latest_model_info is None or model_info['timestamp'] > latest_model_info['timestamp']):
+            latest_model_info = model_info
+
+    merged['model'] = latest_model_info['model'] if latest_model_info else None
+    merged['plan_model'] = latest_model_info['plan_model'] if latest_model_info else None
+    merged['execute_model'] = latest_model_info['execute_model'] if latest_model_info else None
+    return merged
+
 
 def main():
     oc = get_oc_stats()
@@ -494,21 +659,25 @@ def main():
     cx = get_codex_stats()
     pi = get_pi_stats()
     cc = get_claude_stats()
+    ag = get_antigravity_stats()
     qw_t = qw.get('today',{}).get('t',0)
     cx_t = cx.get('today',{}).get('t',0)
     pi_t = pi.get('today',{}).get('t',0)
     cc_t = cc.get('today',{}).get('t',0)
     oc_t = oc.get('today',{}).get('t',0)
+    ag_t = ag.get('today',{}).get('t',0)
     qw_m = qw.get('month',{}).get('t',0)
     cx_m = cx.get('month',{}).get('t',0)
     pi_m = pi.get('month',{}).get('t',0)
     cc_m = cc.get('month',{}).get('t',0)
     oc_m = oc.get('month',{}).get('t',0)
+    ag_m = ag.get('month',{}).get('t',0)
     show_qw = has_usage(qw)
     show_cx = has_usage(cx)
     show_pi = has_usage(pi)
     show_cc = has_usage(cc)
     show_oc = has_usage(oc)
+    show_ag = has_usage(ag)
     # Get model from chat logs first, fallback to settings.json
     qw_model = qw.get('model') or get_model_info()
 
@@ -518,7 +687,7 @@ def main():
 
     # Title - show all tools with data
     title_parts = []
-    month_total = qw_m + cx_m + pi_m + cc_m + oc_m
+    month_total = qw_m + cx_m + pi_m + cc_m + oc_m + ag_m
     if month_total > 0:
         title_parts.append(f"AI Mo {format_count(month_total)}")
     elif qw_t > 0:
@@ -531,6 +700,8 @@ def main():
         title_parts.append(f"CC {format_count(cc_t)}")
     if month_total == 0 and oc_t > 0:
         title_parts.append(f"OC {format_count(oc_t)}")
+    if month_total == 0 and ag_t > 0:
+        title_parts.append(f"AG {format_count(ag_t)}")
     if title_parts:
         print(" / ".join(title_parts))
     else:
@@ -621,6 +792,27 @@ def main():
         print(f"--This Month: {format_count(oc['month']['t'])} | color=#90a4ae")
         print(f"--Last Month: {format_count(oc['previous_month']['t'])} | color=#90a4ae")
         print(f"--Model: {qw_model or 'N/A'} | color=#b0bec5 size=11")
+
+    # Antigravity section
+    if show_ag:
+        if show_qw or show_cx or show_pi or show_cc or show_oc:
+            print("---")
+        print("Antigravity | color=#26a69a font=Menlo size=13")
+        print(f"--Total: {format_count(ag['today']['t'])} | color=#00bcd4")
+        print(f"--Input: {format_count(ag['today']['i'])} | color=#81d4fa")
+        print(f"--Output: {format_count(ag['today']['o'])} | color=#a5d6a7")
+        print(f"--Cache: {format_count(ag['today']['c'])} | color=#ffcc80")
+        if ag['today']['r'] > 0:
+            print(f"--Reasoning: {format_count(ag['today']['r'])} | color=#f48fb1")
+        print(f"--7-Day: {format_count(ag['d7']['t'])} | color=#ce93d8")
+        print(f"--30-Day: {format_count(ag['d30']['t'])} | color=#90a4ae")
+        print(f"--This Month: {format_count(ag['month']['t'])} | color=#90a4ae")
+        print(f"--Last Month: {format_count(ag['previous_month']['t'])} | color=#90a4ae")
+        if ag.get('plan_model') and ag.get('execute_model'):
+            print(f"--Plan Model: {ag['plan_model']} | color=#b0bec5 size=11")
+            print(f"--Execute Model: {ag['execute_model']} | color=#b0bec5 size=11")
+        else:
+            print(f"--Model: {ag.get('model') or 'N/A'} | color=#b0bec5 size=11")
 
     print("---")
     print(f"Current: v{VERSION} | color=#78909c size=10")
